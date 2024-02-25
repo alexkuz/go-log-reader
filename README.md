@@ -8,6 +8,7 @@ go-log-reader [-c <config_file>] [--param_name <param_value>]
 
 ### Config example
 
+**.go-log-reader.json**
 ```json
 {
 	"logs": [
@@ -23,6 +24,18 @@ go-log-reader [-c <config_file>] [--param_name <param_value>]
 		}
 	]
 }
+```
+
+**.go-log-reader.yaml**
+```yaml
+logs:
+  - title: "My remote service"
+    command: "ssh -tt ${url} tail -100f /path/to/logfile.log"
+    entry_pattern: "(INFO|DEBUG|WARN)"
+
+  - title: "My local docker container"
+    command: "docker logs -f my_container",
+    entry_pattern: ""
 ```
 
 ```sh
