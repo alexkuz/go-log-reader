@@ -1,6 +1,8 @@
 package widgets
 
 import (
+	"strings"
+
 	termui "github.com/gizak/termui/v3"
 )
 
@@ -60,4 +62,23 @@ func ParseRawStyles(s string, defaultStyle termui.Style) []termui.Cell {
 	}
 
 	return cells
+}
+
+func StripAsciiCodes(str string) string {
+	runes := []rune(str)
+	stripped := []rune{}
+
+	for i := 0; i < len(runes); i++ {
+		_rune := runes[i]
+		if _rune == 27 && runes[i+1] == '[' {
+			idx := strings.IndexRune(str[i:], 'm')
+			if idx > -1 {
+				i += idx
+				continue
+			}
+		}
+		stripped = append(stripped, _rune)
+	}
+
+	return string(stripped)
 }

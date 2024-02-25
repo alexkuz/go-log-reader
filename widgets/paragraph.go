@@ -29,7 +29,7 @@ func (self *RawParagraph) Draw(buf *termui.Buffer) {
 
 	cells := ParseRawStyles(self.Text, termui.Theme.Table.Text)
 	if self.WrapText {
-		cells = WrapCells(cells, uint(self.Inner.Dx()))
+		cells,_ = WrapCells(cells, uint(self.Inner.Dx()))
 	}
 
 	rows := termui.SplitCells(cells, '\n')
@@ -46,21 +46,23 @@ func (self *RawParagraph) Draw(buf *termui.Buffer) {
 	}
 }
 
-func WrapCells(cells []termui.Cell, width uint) []termui.Cell {
+func WrapCells(cells []termui.Cell, width uint) ([]termui.Cell, int) {
 	str := termui.CellsToString(cells)
 	wrapped := wordwrap.WrapString(str, width)
 	
 	return ForceWrap(wrapped, width, cells)
 }
 
-func ForceWrap(str string, width uint, cells []termui.Cell) []termui.Cell {
+func ForceWrap(str string, width uint, cells []termui.Cell) ([]termui.Cell, int) {
 	wrappedCells := []termui.Cell{}
+	lineCount := 1
 
 	var col uint = 0
 	for i, char := range str {
 		if char == '\n' {
 			col = 0
 			wrappedCells = append(wrappedCells, termui.Cell{Rune: '\n', Style: termui.StyleClear})
+			lineCount++
 		} else if col == width - 3 && len(str) > i + 3 && str[i+1] != '\n' && str[i+2] != '\n' && str[i+3] != '\n' {
 			col = 0
 			wrappedCells = append(wrappedCells,
@@ -69,6 +71,7 @@ func ForceWrap(str string, width uint, cells []termui.Cell) []termui.Cell {
 				termui.Cell{Rune: '⏎', Style: termui.NewStyle(termui.ColorYellow)},
 				termui.Cell{Rune: '\n', Style: termui.StyleClear},
 			)
+			lineCount++
 		} else {
 			col++
 			style := termui.StyleClear
@@ -80,5 +83,5 @@ func ForceWrap(str string, width uint, cells []termui.Cell) []termui.Cell {
 		}
 	}
 
-	return wrappedCells
+	return wrappedCells, lineCount
 }

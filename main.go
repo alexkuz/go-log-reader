@@ -14,14 +14,14 @@ import (
 	customWidgets "replika.com/log-reader/widgets"
 	tb "github.com/nsf/termbox-go"
 	"github.com/spf13/viper"
+	"golang.design/x/clipboard"
 )
 
 type ActivePane int
 
 const (
-	ActiveTabs ActivePane = 0
-	ActiveLeft ActivePane = 1
-	ActiveRight ActivePane = 2
+	ActiveLeft ActivePane = 0
+	ActiveRight ActivePane = 1
 )
 
 type LogConfig struct {
@@ -42,17 +42,24 @@ type Context struct {
 	Grid *ui.Grid
 	Tabs *widgets.TabPane
 	LogTables []*customWidgets.RawTable
-	LogView *customWidgets.RawParagraph
+	LogView *customWidgets.List
 	Info *widgets.Paragraph
 	LogTableCell ui.GridItem
 	LeftHidden bool
 	RightHidden bool
 }
 
-const rowSeparatorColor = ui.Color(240)
-const selectedRowColor = ui.Color(7)
+var rowSeparatorStyle = ui.NewStyle(ui.Color(240))
+var selectedRowStyleInactive = ui.NewStyle(ui.ColorWhite, ui.Color(239))
+var selectedRowStyleActive = ui.NewStyle(ui.ColorWhite, ui.Color(240))
 
 func main() {
+	err := clipboard.Init()
+	if err != nil {
+		panic(err)
+	}
+
+
 	viper.SetConfigName(".go-log-reader")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -108,10 +115,9 @@ func main() {
 	tabpane.SetRect(0, 1, termWidth, 2)
 	tabpane.Border = false
 	tabpane.ActiveTabStyle.Fg = ui.ColorCyan
-	tabpane.ActiveTabStyle.Modifier = ui.ModifierBold | ui.ModifierUnderline
-	tabpane.InactiveTabStyle.Modifier = ui.ModifierBold
 
-	logView := customWidgets.NewRawParagraph()
+	logView := customWidgets.NewList()
+	logView.WrapText = true
 	logView.PaddingLeft = 1
 	logView.Title = " Log Entry "
 
@@ -140,8 +146,9 @@ func main() {
 
 	for range config.Logs {
 		logTable := customWidgets.NewRawTable()
+		logTable.PaddingRight = 1
 		logTable.Border = false
-		logTable.SeparatorStyle = ui.NewStyle(rowSeparatorColor)
+		logTable.SeparatorStyle = rowSeparatorStyle
 		logTable.SetRect(lt.Rectangle.Min.X, lt.Rectangle.Min.Y, lt.Rectangle.Max.X, lt.Rectangle.Max.Y)
 		// logTable.Title = fmt.Sprintf(" %s ", logConfig.Title)
 
@@ -152,7 +159,7 @@ func main() {
 	ui.Render(logTables[0])
 
 	ctx := &Context{
-		ActivePane: ActiveTabs,
+		ActivePane: ActiveLeft,
 		ActiveRow: -1,
 		Config: config,
 		Tabs: tabpane,
@@ -184,8 +191,23 @@ func listenKeys(ctx *Context, quit chan bool) {
 		// ctx.Info.Text = e.ID
 		
 		switch e.ID {
-		case "q", "<C-c>":
+		case "q":
 			quit <- true
+
+		case "<C-c>":
+			data  := ""
+			if ctx.ActivePane == ActiveLeft {
+				if len(logTable.Rows) > 0 {
+					data = logTable.Rows[ctx.ActiveRow][0]
+				}
+			} else {
+				if len(ctx.LogView.Rows) > 0 {
+					data = ctx.LogView.Rows[ctx.LogView.SelectedRow]
+				}
+			}
+			if len(data) > 0 {
+				clipboard.Write(clipboard.FmtText, []byte(customWidgets.StripAsciiCodes(data)))
+			}
 
 		case "l":
 			ctx.LeftHidden = !ctx.LeftHidden
@@ -211,22 +233,30 @@ func listenKeys(ctx *Context, quit chan bool) {
 				ui.Render(logTable, ctx.LogView, ctx.Tabs)
 
 		case "<Down>":
-			if ctx.ActiveRow < len(logTable.Rows) - 1 {
-				resetRowStyles(ctx)
-				ctx.ActiveRow += 1
-				logTable.RowStyles[ctx.ActiveRow] = ui.NewStyle(ui.ColorBlack,selectedRowColor)
-				logTable.ActiveRowIndex = ctx.ActiveRow
-				setViewText(ctx)
+			if ctx.ActivePane == ActiveRight {
+				ctx.LogView.ScrollDown()
+			} else {
+				if ctx.ActiveRow < len(logTable.Rows) - 1 {
+					resetRowStyles(ctx)
+					ctx.ActiveRow += 1
+					updateSelectedRowStyle(ctx)
+					logTable.ActiveRowIndex = ctx.ActiveRow
+					setViewText(ctx)
+				}
 			}
 			ui.Render(logTable, ctx.LogView)
 
 		case "<Up>":
-			if ctx.ActiveRow > 0 {
-				resetRowStyles(ctx)
-				ctx.ActiveRow -= 1
-				logTable.RowStyles[ctx.ActiveRow] = ui.NewStyle(ui.ColorBlack,selectedRowColor)
-				logTable.ActiveRowIndex = ctx.ActiveRow
-				setViewText(ctx)
+			if ctx.ActivePane == ActiveRight {
+				ctx.LogView.ScrollUp()
+			} else {
+				if ctx.ActiveRow > 0 {
+					resetRowStyles(ctx)
+					ctx.ActiveRow -= 1
+					updateSelectedRowStyle(ctx)
+					logTable.ActiveRowIndex = ctx.ActiveRow
+					setViewText(ctx)
+				}
 			}
 			ui.Render(logTable, ctx.LogView)
 
@@ -240,15 +270,7 @@ func listenKeys(ctx *Context, quit chan bool) {
 			ui.Render(logTable, ctx.LogView)
 
 		case "<Tab>":
-			ctx.ActivePane = (ctx.ActivePane +1) % 3
-
-			if (ctx.ActivePane == ActiveTabs) {
-				ctx.Tabs.ActiveTabStyle.Modifier = ui.ModifierBold | ui.ModifierUnderline
-				ctx.Tabs.InactiveTabStyle.Modifier = ui.ModifierBold
-			} else {
-				ctx.Tabs.ActiveTabStyle.Modifier = ui.ModifierClear
-				ctx.Tabs.InactiveTabStyle.Modifier = ui.ModifierClear				
-			}
+			ctx.ActivePane = (ctx.ActivePane + 1) % 2
 
 			if (ctx.ActivePane == ActiveLeft) {
 				logTable.TitleStyle.Modifier = ui.ModifierBold
@@ -259,12 +281,15 @@ func listenKeys(ctx *Context, quit chan bool) {
 			}
 
 			if (ctx.ActivePane == ActiveRight) {
+				ctx.LogView.SelectedRowStyle = selectedRowStyleActive
 				ctx.LogView.TitleStyle.Modifier = ui.ModifierBold
 				ctx.LogView.BorderStyle.Modifier = ui.ModifierBold
 			} else {
+				ctx.LogView.SelectedRowStyle = ctx.LogView.TextStyle
 				ctx.LogView.TitleStyle.Modifier = ui.ModifierClear
 				ctx.LogView.BorderStyle.Modifier = ui.ModifierClear
 			}
+			updateSelectedRowStyle(ctx)
 			ui.Render(logTable, ctx.LogView, ctx.Tabs, ctx.Info)
 
 		case "<Resize>":
@@ -275,6 +300,16 @@ func listenKeys(ctx *Context, quit chan bool) {
 			updateGridLayout(ctx)
 			ui.Render(ctx.Grid, logTable, ctx.LogView, ctx.Tabs, ctx.Info)
 		}
+	}
+}
+
+func updateSelectedRowStyle(ctx *Context) {
+	logTable := ctx.LogTables[ctx.Tabs.ActiveTabIndex]
+
+	if (ctx.ActivePane == ActiveLeft) {
+		logTable.RowStyles[ctx.ActiveRow] = selectedRowStyleActive
+	} else {
+		logTable.RowStyles[ctx.ActiveRow] = selectedRowStyleInactive
 	}
 }
 
@@ -314,10 +349,11 @@ func setViewText(ctx *Context) {
 	}
 
 	if (len(logTable.Rows) > row) {
-		ctx.LogView.Text = logTable.Rows[row][0]
+		ctx.LogView.Rows = strings.Split(logTable.Rows[row][0], "\n")
 	} else {
-		ctx.LogView.Text = ""
+		ctx.LogView.Rows = []string{}
 	}
+	ctx.LogView.SelectedRow = 0
 }
 
 func listenLog(ctx *Context, index int) {
@@ -340,7 +376,7 @@ func listenLog(ctx *Context, index int) {
   		if ctx.ActiveRow > -1 {
 				logTable.RowStyles = map[int]ui.Style{}
   			ctx.ActiveRow += 1
-				logTable.RowStyles[ctx.ActiveRow] = ui.NewStyle(ui.ColorBlack,selectedRowColor)
+				updateSelectedRowStyle(ctx)
 				logTable.ActiveRowIndex = ctx.ActiveRow
 				if (ctx.Tabs.ActiveTabIndex == index) {
 					ui.Render(logTable)
@@ -358,7 +394,8 @@ func listenLog(ctx *Context, index int) {
 	    	if ctx.ActiveRow > -1 {
 	    		row = ctx.ActiveRow
 	    	}
-	    	ctx.LogView.Text = logTable.Rows[row][0]
+	    	ctx.LogView.Rows = strings.Split(logTable.Rows[row][0], "\n")
+	    	ctx.LogView.SelectedRow = 0
 	    }
 
 			ui.Render(logTable, ctx.LogView)

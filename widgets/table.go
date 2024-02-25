@@ -30,6 +30,7 @@ type RawTable struct {
 	FillRow       bool
 	ActiveRowIndex int
 	SeparatorStyle termui.Style
+	ScrollTop int
 
 	// ColumnResizer is called on each Draw. Can be used for custom column sizing.
 	ColumnResizer func()
@@ -44,6 +45,7 @@ func NewRawTable() *RawTable {
 		ColumnResizer: func() {},
 		ActiveRowIndex: -1,
 		SeparatorStyle: termui.Theme.Block.Border,
+		ScrollTop: 0,
 	}
 }
 
@@ -63,17 +65,22 @@ func (self *RawTable) Draw(buf *termui.Buffer) {
 
 	yCoordinate := self.Inner.Min.Y
 
-	maxIndex := self.Inner.Max.Y - self.Inner.Min.Y - 1
+	maxIndex := self.Inner.Dy() - 1
 	if self.RowSeparator {
 		maxIndex = maxIndex / 2
 	}
-	startIndex := 0
-	if self.ActiveRowIndex > maxIndex {
-		startIndex = self.ActiveRowIndex - maxIndex
+	if self.ActiveRowIndex > self.ScrollTop + maxIndex {
+		self.ScrollTop = self.ActiveRowIndex - maxIndex
+	}
+	if self.ScrollTop > self.ActiveRowIndex {
+		self.ScrollTop = self.ActiveRowIndex
+	}
+	if self.ActiveRowIndex == -1 {
+		self.ScrollTop = 0
 	}
 
 	// draw rows
-	for i := startIndex; i < len(self.Rows) && yCoordinate < self.Inner.Max.Y; i++ {
+	for i := self.ScrollTop; i < len(self.Rows) && yCoordinate < self.Inner.Max.Y; i++ {
 		row := self.Rows[i]
 		colXCoordinate := self.Inner.Min.X
 
@@ -145,5 +152,21 @@ func (self *RawTable) Draw(buf *termui.Buffer) {
 			buf.Fill(horizontalCell, image.Rect(self.Inner.Min.X, yCoordinate, self.Inner.Max.X, yCoordinate+1))
 			yCoordinate++
 		}
+	}
+
+	// draw UP_ARROW if needed
+	if self.ScrollTop > 0 {
+		buf.SetCell(
+			termui.NewCell(termui.UP_ARROW, termui.NewStyle(termui.ColorWhite)),
+			image.Pt(self.Inner.Max.X-1+self.PaddingRight, self.Inner.Min.Y),
+		)
+	}
+
+	// draw DOWN_ARROW if needed
+	if len(self.Rows) > int(self.ScrollTop)+self.Inner.Dy() {
+		buf.SetCell(
+			termui.NewCell(termui.DOWN_ARROW, termui.NewStyle(termui.ColorWhite)),
+			image.Pt(self.Inner.Max.X-1+self.PaddingRight, self.Inner.Max.Y-1),
+		)
 	}
 }
