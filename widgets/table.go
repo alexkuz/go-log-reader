@@ -7,7 +7,7 @@ package widgets
 import (
 	"image"
 
-	. "github.com/gizak/termui/v3"
+	termui "github.com/gizak/termui/v3"
 )
 
 /*Table is like:
@@ -20,15 +20,16 @@ import (
 └──────────────────────────────────────────────────────────────┘
 */
 type RawTable struct {
-	Block
+	termui.Block
 	Rows          [][]string
 	ColumnWidths  []int
-	TextStyle     Style
+	TextStyle     termui.Style
 	RowSeparator  bool
-	TextAlignment Alignment
-	RowStyles     map[int]Style
+	TextAlignment termui.Alignment
+	RowStyles     map[int]termui.Style
 	FillRow       bool
 	ActiveRowIndex int
+	SeparatorStyle termui.Style
 
 	// ColumnResizer is called on each Draw. Can be used for custom column sizing.
 	ColumnResizer func()
@@ -36,16 +37,17 @@ type RawTable struct {
 
 func NewRawTable() *RawTable {
 	return &RawTable{
-		Block:         *NewBlock(),
-		TextStyle:     Theme.Table.Text,
+		Block:         *termui.NewBlock(),
+		TextStyle:     termui.Theme.Table.Text,
 		RowSeparator:  true,
-		RowStyles:     make(map[int]Style),
+		RowStyles:     make(map[int]termui.Style),
 		ColumnResizer: func() {},
 		ActiveRowIndex: -1,
+		SeparatorStyle: termui.Theme.Block.Border,
 	}
 }
 
-func (self *RawTable) Draw(buf *Buffer) {
+func (self *RawTable) Draw(buf *termui.Buffer) {
 	self.Block.Draw(buf)
 
 	self.ColumnResizer()
@@ -61,7 +63,7 @@ func (self *RawTable) Draw(buf *Buffer) {
 
 	yCoordinate := self.Inner.Min.Y
 
-	maxIndex := self.Inner.Max.Y - self.Inner.Min.Y
+	maxIndex := self.Inner.Max.Y - self.Inner.Min.Y - 1
 	if self.RowSeparator {
 		maxIndex = maxIndex / 2
 	}
@@ -82,7 +84,7 @@ func (self *RawTable) Draw(buf *Buffer) {
 		}
 
 		if self.FillRow {
-			blankCell := NewCell(' ', rowStyle)
+			blankCell := termui.NewCell(' ', rowStyle)
 			buf.Fill(blankCell, image.Rect(self.Inner.Min.X, yCoordinate, self.Inner.Max.X, yCoordinate+1))
 		}
 
@@ -90,27 +92,27 @@ func (self *RawTable) Draw(buf *Buffer) {
 		for j := 0; j < len(row); j++ {
 			col := ParseRawStyles(row[j], rowStyle)
 			// draw row cell
-			if len(col) > columnWidths[j] || self.TextAlignment == AlignLeft {
-				for _, cx := range BuildCellWithXArray(col) {
+			if len(col) > columnWidths[j] || self.TextAlignment == termui.AlignLeft {
+				for _, cx := range termui.BuildCellWithXArray(col) {
 					k, cell := cx.X, cx.Cell
 					if k == columnWidths[j] || colXCoordinate+k == self.Inner.Max.X {
-						cell.Rune = ELLIPSES
+						cell.Rune = termui.ELLIPSES
 						buf.SetCell(cell, image.Pt(colXCoordinate+k-1, yCoordinate))
 						break
 					} else {
 						buf.SetCell(cell, image.Pt(colXCoordinate+k, yCoordinate))
 					}
 				}
-			} else if self.TextAlignment == AlignCenter {
+			} else if self.TextAlignment == termui.AlignCenter {
 				xCoordinateOffset := (columnWidths[j] - len(col)) / 2
 				stringXCoordinate := xCoordinateOffset + colXCoordinate
-				for _, cx := range BuildCellWithXArray(col) {
+				for _, cx := range termui.BuildCellWithXArray(col) {
 					k, cell := cx.X, cx.Cell
 					buf.SetCell(cell, image.Pt(stringXCoordinate+k, yCoordinate))
 				}
-			} else if self.TextAlignment == AlignRight {
-				stringXCoordinate := MinInt(colXCoordinate+columnWidths[j], self.Inner.Max.X) - len(col)
-				for _, cx := range BuildCellWithXArray(col) {
+			} else if self.TextAlignment == termui.AlignRight {
+				stringXCoordinate := termui.MinInt(colXCoordinate+columnWidths[j], self.Inner.Max.X) - len(col)
+				for _, cx := range termui.BuildCellWithXArray(col) {
 					k, cell := cx.X, cx.Cell
 					buf.SetCell(cell, image.Pt(stringXCoordinate+k, yCoordinate))
 				}
@@ -119,10 +121,10 @@ func (self *RawTable) Draw(buf *Buffer) {
 		}
 
 		// draw vertical separators
-		separatorStyle := self.Block.BorderStyle
+		separatorStyle := self.SeparatorStyle
 
 		separatorXCoordinate := self.Inner.Min.X
-		verticalCell := NewCell(VERTICAL_LINE, separatorStyle)
+		verticalCell := termui.NewCell(termui.VERTICAL_LINE, separatorStyle)
 		for i, width := range columnWidths {
 			if self.FillRow && i < len(columnWidths)-1 {
 				verticalCell.Style.Bg = rowStyle.Bg
@@ -138,7 +140,7 @@ func (self *RawTable) Draw(buf *Buffer) {
 		yCoordinate++
 
 		// draw horizontal separator
-		horizontalCell := NewCell(HORIZONTAL_LINE, separatorStyle)
+		horizontalCell := termui.NewCell(termui.HORIZONTAL_LINE, separatorStyle)
 		if self.RowSeparator && yCoordinate < self.Inner.Max.Y && i != len(self.Rows)-1 {
 			buf.Fill(horizontalCell, image.Rect(self.Inner.Min.X, yCoordinate, self.Inner.Max.X, yCoordinate+1))
 			yCoordinate++

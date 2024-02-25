@@ -7,40 +7,78 @@ package widgets
 import (
 	"image"
 
-	. "github.com/gizak/termui/v3"
+	termui "github.com/gizak/termui/v3"
+	"github.com/mitchellh/go-wordwrap"
 )
 
 type RawParagraph struct {
-	Block
+	termui.Block
 	Text      string
 	WrapText  bool
 }
 
 func NewRawParagraph() *RawParagraph {
 	return &RawParagraph{
-		Block:     *NewBlock(),
+		Block:     *termui.NewBlock(),
 		WrapText:  true,
 	}
 }
 
-func (self *RawParagraph) Draw(buf *Buffer) {
+func (self *RawParagraph) Draw(buf *termui.Buffer) {
 	self.Block.Draw(buf)
 
-	cells := ParseRawStyles(self.Text, Theme.Table.Text)
+	cells := ParseRawStyles(self.Text, termui.Theme.Table.Text)
 	if self.WrapText {
 		cells = WrapCells(cells, uint(self.Inner.Dx()))
 	}
 
-	rows := SplitCells(cells, '\n')
+	rows := termui.SplitCells(cells, '\n')
 
 	for y, row := range rows {
 		if y+self.Inner.Min.Y >= self.Inner.Max.Y {
 			break
 		}
-		row = TrimCells(row, self.Inner.Dx())
-		for _, cx := range BuildCellWithXArray(row) {
+		row = termui.TrimCells(row, self.Inner.Dx())
+		for _, cx := range termui.BuildCellWithXArray(row) {
 			x, cell := cx.X, cx.Cell
 			buf.SetCell(cell, image.Pt(x, y).Add(self.Inner.Min))
 		}
 	}
+}
+
+func WrapCells(cells []termui.Cell, width uint) []termui.Cell {
+	str := termui.CellsToString(cells)
+	wrapped := wordwrap.WrapString(str, width)
+	
+	return ForceWrap(wrapped, width, cells)
+}
+
+func ForceWrap(str string, width uint, cells []termui.Cell) []termui.Cell {
+	wrappedCells := []termui.Cell{}
+
+	var col uint = 0
+	for i, char := range str {
+		if char == '\n' {
+			col = 0
+			wrappedCells = append(wrappedCells, termui.Cell{Rune: '\n', Style: termui.StyleClear})
+		} else if col == width - 3 && len(str) > i + 3 && str[i+1] != '\n' && str[i+2] != '\n' && str[i+3] != '\n' {
+			col = 0
+			wrappedCells = append(wrappedCells,
+				termui.Cell{Rune: char, Style: cells[i].Style},
+				termui.Cell{Rune: ' ', Style: termui.StyleClear},
+				termui.Cell{Rune: '⏎', Style: termui.NewStyle(termui.ColorYellow)},
+				termui.Cell{Rune: '\n', Style: termui.StyleClear},
+			)
+		} else {
+			col++
+			style := termui.StyleClear
+			if len(cells) > i {
+				// TODO: shouldn't get here
+				style = cells[i].Style
+			}
+			wrappedCells = append(wrappedCells, termui.Cell{Rune: char, Style: style})
+		}
+	}
+
+	return wrappedCells
 }

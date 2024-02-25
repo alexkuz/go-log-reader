@@ -20,5 +20,6 @@
 # Go workspace file
 go.work
 
-go-log-reader.json
+.go-log-reader
+.go-log-reader.*
 dist/

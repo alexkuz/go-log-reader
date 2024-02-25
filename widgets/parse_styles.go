@@ -1,11 +1,11 @@
 package widgets
 
 import (
-	. "github.com/gizak/termui/v3"
+	termui "github.com/gizak/termui/v3"
 )
 
-func ParseRawStyles(s string, defaultStyle Style) []Cell {
-	cells := []Cell{}
+func ParseRawStyles(s string, defaultStyle termui.Style) []termui.Cell {
+	cells := []termui.Cell{}
 	runes := []rune(s)
 
 	style := defaultStyle
@@ -18,16 +18,17 @@ func ParseRawStyles(s string, defaultStyle Style) []Cell {
 				if runes[i+1] == ';' || runes[i+1] == 'm' {
 					switch (runes[i] - '0') {
 					case 0:
-						style.Modifier = ModifierClear
+						style.Modifier = termui.ModifierClear
 					case 1:
-						style.Modifier = ModifierBold
+						style.Modifier = termui.ModifierBold
 					case 4:
-						style.Modifier = ModifierUnderline
+						style.Modifier = termui.ModifierUnderline
 					}
-					i += 2
 					if runes[i+1] == 'm' {
+						i += 2
 						break
 					}
+					i += 2
 				} else if runes[i+2] == ';' || runes[i+2] == 'm' {
 					color := runes[i+1] - '0'
 					switch  (runes[i] - '0') {
@@ -35,26 +36,27 @@ func ParseRawStyles(s string, defaultStyle Style) []Cell {
 						if color == 9 {
 							style.Fg = defaultStyle.Fg
 						} else {
-							style.Fg = Color(color)
+							style.Fg = termui.Color(color)
 						}
 					case 4:
 						if color == 9 {
 							style.Bg = defaultStyle.Bg
 						} else {
-							style.Bg = Color(color)
+							style.Bg = termui.Color(color)
 						}
 					}
-					i += 3
 					if runes[i+2] == 'm' {
+						i += 3
 						break
 					}
+					i += 3
 				} else {
 					break
 				}
 			}
 			_rune = runes[i]
 		}
-		cells = append(cells, Cell{Rune: _rune, Style: style})
+		cells = append(cells, termui.Cell{Rune: _rune, Style: style})
 	}
 
 	return cells
