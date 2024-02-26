@@ -14,7 +14,7 @@ import (
 	customWidgets "replika.com/log-reader/widgets"
 	tb "github.com/nsf/termbox-go"
 	"github.com/spf13/viper"
-	"golang.design/x/clipboard"
+	"github.com/atotto/clipboard"
 )
 
 type ActivePane int
@@ -54,12 +54,6 @@ var selectedRowStyleInactive = ui.NewStyle(ui.ColorWhite, ui.Color(239))
 var selectedRowStyleActive = ui.NewStyle(ui.ColorWhite, ui.Color(240))
 
 func main() {
-	err := clipboard.Init()
-	if err != nil {
-		panic(err)
-	}
-
-
 	viper.SetConfigName(".go-log-reader")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -206,7 +200,7 @@ func listenKeys(ctx *Context, quit chan bool) {
 				}
 			}
 			if len(data) > 0 {
-				clipboard.Write(clipboard.FmtText, []byte(customWidgets.StripAsciiCodes(data)))
+				clipboard.WriteAll(customWidgets.StripAsciiCodes(data))
 			}
 
 		case "l":
