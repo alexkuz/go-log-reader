@@ -1,5 +1,10 @@
 # go-log-reader
 
+### Install
+```sh
+curl -fsSL https://raw.githubusercontent.com/alexkuz/go-log-reader/main/install.sh | sh
+```
+
 ### Usage
 
 ```sh
