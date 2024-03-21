@@ -26,10 +26,11 @@ type RawTable struct {
 	TextStyle     termui.Style
 	RowSeparator  bool
 	TextAlignment termui.Alignment
-	RowStyles     map[int]termui.Style
+	ActiveRowStyle  termui.Style
 	FillRow       bool
 	ActiveRowIndex int
 	SeparatorStyle termui.Style
+	ActiveRowSeparatorStyle  termui.Style
 	ScrollTop int
 
 	// ColumnResizer is called on each Draw. Can be used for custom column sizing.
@@ -41,10 +42,11 @@ func NewRawTable() *RawTable {
 		Block:         *termui.NewBlock(),
 		TextStyle:     termui.Theme.Table.Text,
 		RowSeparator:  true,
-		RowStyles:     make(map[int]termui.Style),
+		ActiveRowStyle: termui.Theme.Table.Text,
 		ColumnResizer: func() {},
 		ActiveRowIndex: -1,
 		SeparatorStyle: termui.Theme.Block.Border,
+		ActiveRowSeparatorStyle: termui.Theme.Block.Border,
 		ScrollTop: 0,
 	}
 }
@@ -79,15 +81,23 @@ func (self *RawTable) Draw(buf *termui.Buffer) {
 		self.ScrollTop = 0
 	}
 
+	if self.RowSeparator && self.ActiveRowIndex == self.ScrollTop {
+		separatorSymbol := '▄'
+		separatorStyle := self.ActiveRowSeparatorStyle
+		cell := termui.NewCell(separatorSymbol, separatorStyle)
+		buf.Fill(cell, image.Rect(self.Inner.Min.X, yCoordinate-1, self.Inner.Max.X, yCoordinate))
+	}
+
+	var i int
+
 	// draw rows
-	for i := self.ScrollTop; i < len(self.Rows) && yCoordinate < self.Inner.Max.Y; i++ {
+	for i = self.ScrollTop; i < len(self.Rows) && yCoordinate < self.Inner.Max.Y; i++ {
 		row := self.Rows[i]
 		colXCoordinate := self.Inner.Min.X
 
 		rowStyle := self.TextStyle
-		// get the row style if one exists
-		if style, ok := self.RowStyles[i]; ok {
-			rowStyle = style
+		if i == self.ActiveRowIndex {
+			rowStyle = self.ActiveRowStyle
 		}
 
 		if self.FillRow {
@@ -132,8 +142,8 @@ func (self *RawTable) Draw(buf *termui.Buffer) {
 
 		separatorXCoordinate := self.Inner.Min.X
 		verticalCell := termui.NewCell(termui.VERTICAL_LINE, separatorStyle)
-		for i, width := range columnWidths {
-			if self.FillRow && i < len(columnWidths)-1 {
+		for k, width := range columnWidths {
+			if self.FillRow && k < len(columnWidths)-1 {
 				verticalCell.Style.Bg = rowStyle.Bg
 			} else {
 				verticalCell.Style.Bg = self.Block.BorderStyle.Bg
@@ -147,26 +157,28 @@ func (self *RawTable) Draw(buf *termui.Buffer) {
 		yCoordinate++
 
 		// draw horizontal separator
-		horizontalCell := termui.NewCell(termui.HORIZONTAL_LINE, separatorStyle)
+		separatorSymbol := termui.HORIZONTAL_LINE
+		if i == self.ActiveRowIndex {
+			separatorSymbol = '▀'
+			separatorStyle = self.ActiveRowSeparatorStyle
+		}
+		if i == self.ActiveRowIndex - 1 {
+			separatorSymbol = '▄'
+			separatorStyle = self.ActiveRowSeparatorStyle
+		}
+		horizontalCell := termui.NewCell(separatorSymbol, separatorStyle)
 		if self.RowSeparator && yCoordinate < self.Inner.Max.Y && i != len(self.Rows)-1 {
 			buf.Fill(horizontalCell, image.Rect(self.Inner.Min.X, yCoordinate, self.Inner.Max.X, yCoordinate+1))
 			yCoordinate++
 		}
 	}
 
-	// draw UP_ARROW if needed
-	if self.ScrollTop > 0 {
-		buf.SetCell(
-			termui.NewCell(termui.UP_ARROW, termui.NewStyle(termui.ColorWhite)),
-			image.Pt(self.Inner.Max.X-1+self.PaddingRight, self.Inner.Min.Y),
-		)
+	if self.RowSeparator && self.ActiveRowIndex == i {
+		separatorSymbol := '▀'
+		separatorStyle := self.ActiveRowSeparatorStyle
+		cell := termui.NewCell(separatorSymbol, separatorStyle)
+		buf.Fill(cell, image.Rect(self.Inner.Min.X, yCoordinate, self.Inner.Max.X, yCoordinate+1))
 	}
 
-	// draw DOWN_ARROW if needed
-	if len(self.Rows) > int(self.ScrollTop)+self.Inner.Dy() {
-		buf.SetCell(
-			termui.NewCell(termui.DOWN_ARROW, termui.NewStyle(termui.ColorWhite)),
-			image.Pt(self.Inner.Max.X-1+self.PaddingRight, self.Inner.Max.Y-1),
-		)
-	}
+	DrawScrollbar(buf, self.Inner, self.PaddingRight, self.ScrollTop, i, len(self.Rows))
 }

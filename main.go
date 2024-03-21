@@ -8,13 +8,14 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/atotto/clipboard"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
-	customWidgets "replika.com/log-reader/widgets"
 	tb "github.com/nsf/termbox-go"
 	"github.com/spf13/viper"
-	"github.com/atotto/clipboard"
+	customWidgets "replika.com/log-reader/widgets"
 )
 
 type ActivePane int
@@ -52,12 +53,33 @@ type Context struct {
 var rowSeparatorStyle = ui.NewStyle(ui.Color(240))
 var selectedRowStyleInactive = ui.NewStyle(ui.ColorWhite, ui.Color(239))
 var selectedRowStyleActive = ui.NewStyle(ui.ColorWhite, ui.Color(240))
+var selectedRowSepStyleInactive = ui.NewStyle(ui.Color(239))
+var selectedRowSepStyleActive = ui.NewStyle(ui.Color(240))
+
+var defaultLogConfig = Config {
+	Logs: []LogConfig {
+		{
+			Title: "System log",
+			Command: "tail -1000f /var/log/syslog",
+			EntryPattern: "\\w{3} \\d{1,2} \\d{2}:\\d{2}:\\d{2}",
+		},
+		{
+			Title: "Kernel log",
+			Command: "tail -1000f /var/log/kern.log",
+			EntryPattern: "\\w{3} \\d{1,2} \\d{2}:\\d{2}:\\d{2}",			
+		},
+	},
+}
 
 func main() {
 	viper.SetConfigName(".go-log-reader")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-	viper.AddConfigPath("$HOME") 
+	viper.AddConfigPath("$HOME")
+
+	noConfig := false
+
+	config := &Config{}
 
 	args := os.Args[1:]
 	argsMap := map[string]string{}
@@ -65,23 +87,30 @@ func main() {
 		if (args[i] == "-c") {
 			// configPath = args[i+1]
 			viper.SetConfigFile(args[i+1])
-			i += 1
+			i++
+		} else if (args[i] == "-l") {
+			noConfig = true
+			config.Logs = append(config.Logs, LogConfig{Command: args[i+1], Title: "Log"})
+			i++
 		} else if (strings.Index(args[i], "--") == 0) {
 			argsMap[args[i][2:]] = args[i+1]
-			i += 1
+			i++
 		}
 	}
 
-	config := &Config{}
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Fatalf("%v", err)
+	if !noConfig {
+		if err := viper.ReadInConfig(); err != nil {
+			// if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// 	log.Fatalf("%v", err)
+			// } else {
+			// 	log.Fatalf("%v", err)
+			// }
+			config = &defaultLogConfig
 		} else {
-			log.Fatalf("%v", err)
+			if err := viper.Unmarshal(&config); err != nil {
+				log.Fatalf("failed to parse config: %v", err)
+			}
 		}
-	}
-	if err := viper.Unmarshal(&config); err != nil {
-		log.Fatalf("failed to parse config: %v", err)
 	}
 
 	if err := ui.Init(); err != nil {
@@ -142,9 +171,9 @@ func main() {
 		logTable := customWidgets.NewRawTable()
 		logTable.PaddingRight = 1
 		logTable.Border = false
+		logTable.FillRow = true
 		logTable.SeparatorStyle = rowSeparatorStyle
 		logTable.SetRect(lt.Rectangle.Min.X, lt.Rectangle.Min.Y, lt.Rectangle.Max.X, lt.Rectangle.Max.Y)
-		// logTable.Title = fmt.Sprintf(" %s ", logConfig.Title)
 
 		logTable.ColumnWidths = []int{termWidth / 2}
 		logTables = append(logTables, logTable)
@@ -210,7 +239,6 @@ func listenKeys(ctx *Context, quit chan bool) {
 
 		case "<Left>":
 				ctx.Tabs.ActiveTabIndex = (ctx.Tabs.ActiveTabIndex + len(ctx.Tabs.TabNames) - 1) % len(ctx.Tabs.TabNames)
-				resetRowStyles(ctx)
 				logTable = ctx.LogTables[ctx.Tabs.ActiveTabIndex]
 				ctx.ActiveRow = -1
 				logTable.ActiveRowIndex = ctx.ActiveRow
@@ -219,7 +247,6 @@ func listenKeys(ctx *Context, quit chan bool) {
 
 		case "<Right>":
 				ctx.Tabs.ActiveTabIndex = (ctx.Tabs.ActiveTabIndex + 1) % len(ctx.Tabs.TabNames)
-				resetRowStyles(ctx)
 				logTable = ctx.LogTables[ctx.Tabs.ActiveTabIndex]
 				ctx.ActiveRow = -1
 				logTable.ActiveRowIndex = ctx.ActiveRow
@@ -231,7 +258,6 @@ func listenKeys(ctx *Context, quit chan bool) {
 				ctx.LogView.ScrollDown()
 			} else {
 				if ctx.ActiveRow < len(logTable.Rows) - 1 {
-					resetRowStyles(ctx)
 					ctx.ActiveRow += 1
 					updateSelectedRowStyle(ctx)
 					logTable.ActiveRowIndex = ctx.ActiveRow
@@ -245,7 +271,6 @@ func listenKeys(ctx *Context, quit chan bool) {
 				ctx.LogView.ScrollUp()
 			} else {
 				if ctx.ActiveRow > 0 {
-					resetRowStyles(ctx)
 					ctx.ActiveRow -= 1
 					updateSelectedRowStyle(ctx)
 					logTable.ActiveRowIndex = ctx.ActiveRow
@@ -256,7 +281,6 @@ func listenKeys(ctx *Context, quit chan bool) {
 
 		case "<Escape>":
 			if ctx.ActiveRow > -1 {
-				resetRowStyles(ctx)
 				ctx.ActiveRow = -1
 				logTable.ActiveRowIndex = ctx.ActiveRow
 				setViewText(ctx)
@@ -301,16 +325,12 @@ func updateSelectedRowStyle(ctx *Context) {
 	logTable := ctx.LogTables[ctx.Tabs.ActiveTabIndex]
 
 	if (ctx.ActivePane == ActiveLeft) {
-		logTable.RowStyles[ctx.ActiveRow] = selectedRowStyleActive
+		logTable.ActiveRowStyle = selectedRowStyleActive
+		logTable.ActiveRowSeparatorStyle = selectedRowSepStyleActive
 	} else {
-		logTable.RowStyles[ctx.ActiveRow] = selectedRowStyleInactive
+		logTable.ActiveRowStyle = selectedRowStyleInactive
+		logTable.ActiveRowSeparatorStyle = selectedRowSepStyleInactive
 	}
-}
-
-func resetRowStyles(ctx *Context) {
-	logTable := ctx.LogTables[ctx.Tabs.ActiveTabIndex]
-	// resetRowStyles(ctx)
-	logTable.RowStyles = map[int]ui.Style{}
 }
 
 func updateGridLayout(ctx *Context) {
@@ -361,6 +381,14 @@ func listenLog(ctx *Context, index int) {
   stdout, _ := cmd.StdoutPipe()
   cmd.Start()
 
+  init := true
+  timer := time.NewTimer(time.Millisecond * 100)
+  go func() {
+  	<- timer.C
+		init = false
+		ui.Render(logTable, ctx.LogView)
+  }()
+
   scanner := bufio.NewScanner(stdout)
 
   for scanner.Scan() {
@@ -368,12 +396,13 @@ func listenLog(ctx *Context, index int) {
     if logStartRe.MatchString(str) {
   		logTable.Rows = append([][]string{{strings.TrimSpace(str)}}, logTable.Rows...)
   		if ctx.ActiveRow > -1 {
-				logTable.RowStyles = map[int]ui.Style{}
   			ctx.ActiveRow += 1
 				updateSelectedRowStyle(ctx)
 				logTable.ActiveRowIndex = ctx.ActiveRow
 				if (ctx.Tabs.ActiveTabIndex == index) {
-					ui.Render(logTable)
+					if !init {
+						ui.Render(logTable)
+					}
 				}
   		}
     } else {
@@ -385,14 +414,16 @@ func listenLog(ctx *Context, index int) {
 		if (ctx.Tabs.ActiveTabIndex == index) {
 	    if len(logTable.Rows) > 0 {
 	    	row := 0
-	    	if ctx.ActiveRow > -1 {
+	    	if ctx.ActiveRow > -1 && ctx.ActiveRow < len(logTable.Rows) {
 	    		row = ctx.ActiveRow
 	    	}
 	    	ctx.LogView.Rows = strings.Split(logTable.Rows[row][0], "\n")
 	    	ctx.LogView.SelectedRow = 0
 	    }
 
-			ui.Render(logTable, ctx.LogView)
+	    if !init {
+				ui.Render(logTable, ctx.LogView)
+			}
 		}	
   }
   cmd.Wait()

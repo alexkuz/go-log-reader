@@ -54,14 +54,16 @@ func (self *List) Draw(buf *termui.Buffer) {
 			point = image.Pt(self.Inner.Min.X, point.Y+lineCount)
 		}
 
-		if self.SelectedRow + extraLines >= self.Inner.Dy()+self.topRow {
+		if self.SelectedRow > 0 && self.SelectedRow + extraLines >= self.Inner.Dy()+self.topRow {
 			self.topRow = self.SelectedRow + extraLines - self.Inner.Dy() + 1
 		}
 		point = self.Inner.Min
 	}
 
+	var row int
+
 	// draw rows
-	for row := self.topRow; row < len(self.Rows) && point.Y < self.Inner.Max.Y; row++ {
+	for row = self.topRow; row < len(self.Rows) && point.Y < self.Inner.Max.Y; row++ {
 		cells := ParseRawStyles(self.Rows[row], self.TextStyle)
 		if self.WrapText {
 			cells, _ = WrapCells(cells, uint(self.Inner.Dx()))
@@ -94,21 +96,7 @@ func (self *List) Draw(buf *termui.Buffer) {
 		point = image.Pt(self.Inner.Min.X, point.Y+1)
 	}
 
-	// draw UP_ARROW if needed
-	if self.topRow > 0 {
-		buf.SetCell(
-			termui.NewCell(termui.UP_ARROW, termui.NewStyle(termui.ColorWhite)),
-			image.Pt(self.Inner.Max.X-1, self.Inner.Min.Y),
-		)
-	}
-
-	// draw DOWN_ARROW if needed
-	if len(self.Rows) > int(self.topRow)+self.Inner.Dy() {
-		buf.SetCell(
-			termui.NewCell(termui.DOWN_ARROW, termui.NewStyle(termui.ColorWhite)),
-			image.Pt(self.Inner.Max.X-1, self.Inner.Max.Y-1),
-		)
-	}
+	DrawScrollbar(buf, self.Inner, self.PaddingRight, self.topRow, row, len(self.Rows))
 }
 
 // ScrollAmount scrolls by amount given. If amount is < 0, then scroll up.
